@@ -1,0 +1,11 @@
+.env
+secrets/*
+!secrets/companies.php.example
+!secrets/.gitkeep
+verifactu/vendor/
+verifactu/qr/
+verifactu/invoices/
+*.pdf
+*.png
+.DS_Store
+*.log

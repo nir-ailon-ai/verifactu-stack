@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS verifactu_submissions (
+    id                 INT AUTO_INCREMENT PRIMARY KEY,
+    empresa_nif        VARCHAR(30)  NOT NULL,
+    idfactura          INT          NOT NULL,
+    invoice_code       VARCHAR(50)  NOT NULL,
+    issue_date         DATE         NOT NULL,
+    total_amount       DECIMAL(12,2) NOT NULL,
+    status             ENUM('pending','submitted','rejected') NOT NULL DEFAULT 'pending',
+    csv                VARCHAR(50)  NULL,
+    hash               VARCHAR(64)  NULL,
+    hashed_at          DATETIME     NULL,
+    qr_url             TEXT         NULL,
+    qr_png_path        VARCHAR(255) NULL,
+    prev_invoice_code  VARCHAR(50)  NULL,
+    prev_invoice_date  DATE         NULL,
+    prev_hash          VARCHAR(64)  NULL,
+    error_message      TEXT         NULL,
+    created_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    submitted_at       DATETIME     NULL,
+    UNIQUE KEY uniq_empresa_invoice (empresa_nif, idfactura),
+    INDEX idx_chain (empresa_nif, submitted_at, id)
+);
