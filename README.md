@@ -182,14 +182,12 @@ declaration signed by its developer. Since this stack is self-built by each depl
 **you** as the deployer are effectively both the developer and the taxpayer, and the legal
 responsibility for compliance is entirely yours.
 
-Before going live in producción, you should:
+The authors and contributors **bear no responsibility whatsoever** for any tax penalty,
+sanction, incorrect submission, data loss, or any other consequence arising from the use of
+this software. Everything provided here is **as-is, no warranty**.
 
-- Read the Verifactu regulation directly (linked below).
-- Consult a gestor or fiscal advisor.
-- Audit the code and dependencies yourself.
-- Understand that Spanish tax law changes; this repository reflects the state as of the last commit.
-
-Everything provided here is **as-is, no warranty**. See LICENSE.
+**Read [DISCLAIMER.md](DISCLAIMER.md) in full before running any command against AEAT.**
+Doing so is a condition of use.
 
 ## Producción cutover checklist
 
