@@ -1,0 +1,276 @@
+---
+name: onboarding
+description: >
+  Complete first-time setup guide: installing Docker, configuring secrets,
+  bringing up the stack, initializing FacturaScripts with empresa details,
+  creating invoice series and sequences, uploading a logo, setting up sidecar
+  tables, and running a first Verifactu test submission.
+triggers:
+  - "help me set up verifactu stack from scratch"
+  - "how do I install this?"
+  - "onboarding"
+  - First session with a user who has never run the stack
+---
+
+# Skill: First-time onboarding
+
+Walk through this skill top to bottom for a brand-new installation. Each step
+builds on the previous one. Do not skip steps.
+
+---
+
+## Step 1: Prerequisites
+
+Confirm the user has:
+
+- **Docker Desktop** installed and running.
+  - macOS/Windows: Docker Desktop from docker.com.
+  - Linux: Docker Engine + Docker Compose plugin.
+  - Windows: WSL2 integration must be enabled in Docker Desktop settings.
+- **A terminal** (Terminal.app, iTerm2, Windows Terminal with WSL2, or similar).
+- **A Spanish digital certificate** (`.p12` or `.pfx`) for each empresa.
+  - If not yet obtained: free from FNMT (Fábrica Nacional de Moneda y Timbre) via
+    video-ID appointment at fnmt.es. Takes 1–2 business days.
+- **Claude Code** (optional, for AI autopilot — not required for CLI/manual modes).
+
+---
+
+## Step 2: Clone and configure
+
+```bash
+git clone https://github.com/YOURUSER/verifactu-stack.git
+cd verifactu-stack
+```
+
+### .env
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set strong passwords:
+```
+MARIADB_ROOT_PASSWORD=<strong-random-password>
+MARIADB_DATABASE=facturascripts
+MARIADB_USER=fsuser
+MARIADB_PASSWORD=<another-strong-password>
+```
+
+### secrets/companies.php
+
+```bash
+cp secrets/companies.php.example secrets/companies.php
+```
+
+Edit `secrets/companies.php`. The file has inline comments explaining each field.
+Key sections to fill:
+
+- `database.password` — same as `MARIADB_PASSWORD` in `.env`
+- `sif.id` — a unique identifier for your SIF installation (any string, e.g. `MY_STACK_001`)
+- `sif.name` — your software name (e.g. `My Verifactu Stack`)
+- `sif.environment` — start with `preproduccion`
+- `empresas` — one entry per empresa (NIF → config):
+  ```php
+  'B12345678' => [
+      'name'      => 'MI EMPRESA SL',
+      'cert_path' => '/secrets/mi-empresa.p12',
+      'cert_pass' => 'certificate-password',
+  ],
+  ```
+
+### Copy certificates
+
+```bash
+cp ~/path-to/mi-empresa.p12 secrets/
+chmod 600 .env secrets/companies.php secrets/*.p12
+```
+
+---
+
+## Step 3: Build and start
+
+```bash
+docker compose up -d --build
+```
+
+First build takes 3–5 minutes (PHP extensions, Composer, npm). Watch for errors:
+
+```bash
+docker compose logs -f app
+```
+
+When you see Apache starting cleanly, the stack is ready.
+
+---
+
+## Step 4: FacturaScripts first-run wizard
+
+Open `http://localhost/` in a browser.
+
+FacturaScripts will run a first-time installer. Complete it:
+
+1. **Database**: use the values from `.env` — host `db`, database `facturascripts`,
+   user `fsuser`, password = `MARIADB_PASSWORD`.
+2. **Admin user**: create a username and password for the FS web UI. Store these
+   securely — they are not in any config file.
+3. Complete the wizard and log in.
+
+---
+
+## Step 5: Create the empresa in FacturaScripts
+
+In the FS web UI: **Admin → Empresas → Nueva empresa**.
+
+Fill in:
+- **Nombre / Razón social**: legal name
+- **CIF/NIF**: the empresa's tax ID (must match the key in `companies.php`)
+- **Dirección, CP, Ciudad, Provincia, País**
+- **Régimen de IVA**: General (or the applicable regime)
+- **Persona física**: checked for autónomos, unchecked for SLs
+
+Save. The empresa is now in the database.
+
+---
+
+## Step 6: Create invoice series
+
+Navigate: **Admin → Series de documentos → Nueva**.
+
+Create at minimum:
+
+| Serie | Descripción | Use |
+|---|---|---|
+| `A` | Facturas emitidas | All production customer invoices |
+| `R` | Facturas rectificativas | Corrective invoices only |
+| `T` | Test | Preproducción testing only — never used in producción |
+
+For each serie, set the empresa (if the UI asks).
+
+---
+
+## Step 7: Create sequences (secuencias de documentos)
+
+Navigate: **Admin → Secuencias de documentos → Nueva**.
+
+Create one sequence per (empresa, serie, document type). Example for serie A:
+
+| Field | Value |
+|---|---|
+| Empresa | MI EMPRESA SL |
+| Serie | A |
+| Tipo de documento | FacturaCliente |
+| Patrón | `{EJE}-A{0NUM}` |
+| Número inicial | 1 |
+
+The pattern `{EJE}-A{0NUM}` produces `2026-A001`, `2026-A002`, etc.
+Use `{0NUM}` for zero-padded counters (configurable width in FS).
+
+Repeat for serie `R` (pattern `{EJE}-R{0NUM}`) and `T` (pattern `{EJE}-T{0NUM}`).
+
+**Important**: sequences are per-empresa. Two empresas on the same install each
+have their own independent counter even if they use the same serie letter.
+
+---
+
+## Step 8: Upload the empresa logo
+
+The logo appears on customer-facing PDFs generated by `make-invoice-pdf.php`.
+
+In FS UI: **Admin → Empresas → [edit the empresa]**.
+
+Find the **Logo** field and upload a PNG or JPG. FS stores it in the `fs_myfiles`
+named volume.
+
+Recommended: square PNG, at least 300×300px, transparent background.
+
+---
+
+## Step 9: Set up sidecar tables
+
+The Verifactu submitter and the invoice import scripts use their own sidecar tables
+that are not part of FacturaScripts' native schema.
+
+```bash
+# Verifactu chain tracker
+docker compose exec db mariadb -ufsuser \
+  -p"$(grep MARIADB_PASSWORD ~/verifactu-stack/.env | cut -d= -f2)" \
+  facturascripts < verifactu/setup-sidecar.sql
+
+# Incoming invoice import audit log
+docker compose exec db mariadb -ufsuser \
+  -p"$(grep MARIADB_PASSWORD ~/verifactu-stack/.env | cut -d= -f2)" \
+  facturascripts < incoming/setup-sidecar.sql
+```
+
+Verify:
+```bash
+docker compose exec db mariadb -ufsuser \
+  -p"$(grep MARIADB_PASSWORD ~/verifactu-stack/.env | cut -d= -f2)" \
+  facturascripts \
+  -e "SHOW TABLES LIKE 'verifactu%'; SHOW TABLES LIKE '%invoice%';"
+```
+
+You should see `verifactu_submissions`, `incoming_invoice_imports`, and
+`outgoing_invoice_exports`.
+
+---
+
+## Step 10: Test in preproducción
+
+### Create a test invoice in FS
+
+In FS UI: **Ventas → Facturas de cliente → Nueva**.
+- Use serie `T`.
+- Any customer, any amount.
+- Save and set to issued status.
+
+### Run the submitter in dry-run mode
+
+```bash
+docker compose exec app php /verifactu/submit-pending.php \
+  --env=preproduccion \
+  --dry-run
+```
+
+Expected output: the test invoice listed as pending, local hash computed, no network call.
+
+### Submit to preproducción
+
+```bash
+docker compose exec app php /verifactu/submit-pending.php --env=preproduccion
+```
+
+Expected: `ACCEPTED. CSV: A-XXXX-XXXX-XXXX-XXXX`. This is AEAT's preproducción
+confirmation — no fiscal effect.
+
+### Generate the test PDF
+
+```bash
+docker compose exec app php /verifactu/make-invoice-pdf.php <T_INVOICE_CODE> \
+  --env=preproduccion
+```
+
+Open the PDF in `verifactu/invoices/`. Verify: empresa logo present, QR code present
+and pointing to `prewww2.aeat.es`.
+
+---
+
+## Step 11: Ready for producción
+
+When preproducción tests pass and you are ready to start using the system for real:
+
+1. In `secrets/companies.php`, change `sif.environment` from `preproduccion` to
+   `produccion`. (Tier 2 action — confirm with the user before doing this.)
+2. Switch invoice series from `T` to `A` for real invoices.
+3. Run `--env=produccion` with explicit user confirmation for each submission.
+
+See `command-safety.md` for the full producción ruleset.
+
+---
+
+## Related skills
+
+- `stack-orientation.md` — architecture overview after setup is complete.
+- `incoming-invoice-agent.md` — first supplier invoice import.
+- `outgoing-invoice-agent.md` — first customer invoice import.
+- `command-safety.md` — what the agent can and cannot do autonomously.

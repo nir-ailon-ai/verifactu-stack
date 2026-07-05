@@ -1,73 +1,100 @@
 # Verifactu Stack
 
-A self-hosted, zero-third-party-fee Spanish invoicing stack built from open-source parts.
-FacturaScripts for invoice management, our own Verifactu submitter for AEAT compliance,
-mpdf for customer PDFs, all packaged as three Docker services (`db`, `app`, `nginx`).
+**An open-source, self-hosted AI gestoria for Spanish businesses and autónomos.**
 
-Runs on your laptop or a cloud VM. No SaaS subscriptions.
+Import invoices by dropping PDFs into a folder. File quarterly taxes through a guided
+conversation with an AI agent. Run on your own hardware or a cloud VM. No subscriptions,
+no third-party access to your data.
 
-## What it does
+---
 
-Spanish businesses that issue invoices through software must comply with **Verifactu** (Real
-Decreto 1007/2023 + Order HAC/1177/2024) starting:
+## Vision
 
-- **1 January 2027** for sociedades (SL, SA, etc.)
-- **1 July 2027** for autónomos and other taxpayers
+A traditional gestor charges €150–500/month to perform tasks that are, at their core,
+mechanical: reading invoices, entering numbers, submitting forms to AEAT. Most of that
+cost is human time spent on repetitive work that software can handle.
 
-Every invoice must be registered with the AEAT in near-real-time, carry a hash chain
-proving nothing was altered after the fact, and include a QR code the recipient can scan
-to verify the invoice against AEAT's records.
+Verifactu Stack replaces the mechanical layer with an AI agent — [Claude Code](https://claude.ai/code)
+— that reads PDFs, understands Spanish tax law, enters data into FacturaScripts, and walks
+you through AEAT filings step by step. A human — you, or a gestor using this system —
+stays in the loop for review and approval.
 
-Most commercial invoicing software adds a monthly fee for this compliance layer. This
-project provides the same compliance, running on your own machine, with:
+The system has three operating modes:
 
-- **FacturaScripts** (GPL) for the invoicing UI, customer/product management, and accounting.
-- **Custom PHP CLI scripts** that submit invoices to AEAT via the [josemmo/verifactu-php](https://github.com/josemmo/Verifactu-PHP) library.
-- **mPDF** to generate Verifactu-compliant customer PDFs with the QR + CSV embedded.
-- **MariaDB** for storage.
-- **nginx** as reverse proxy (with hooks for Let's Encrypt when you deploy publicly).
+| Mode | Who | What happens |
+|---|---|---|
+| **AI Autopilot** | Business owner with Claude Code | Drop PDFs, chat with the agent, file taxes guided by conversation |
+| **CLI** | Semi-technical user | Run PHP scripts directly against the DB and AEAT |
+| **Manual** | Anyone | Use FacturaScripts' full web UI |
 
-## Features
+All three modes write to the same database and are fully interchangeable.
 
-- Multi-empresa: SLs and autónomos on the same install, each with its own cert and chain.
-- Spanish + foreign customers (auto-selects `FiscalIdentifier` vs `ForeignFiscalIdentifier`).
-- IVA exempt & non-subject operations mapped to correct AEAT codes (E1–E6, N1–N2).
-- Rectificativas (delta and substitution).
-- Independent **preproducción** and **producción** environments in the same DB, selectable per invocation via `--env=`.
-- Series-based safety: test series (`T`) is preproducción-only; can't accidentally hit producción.
-- PDFs include: empresa logo, formatted invoice code, tax breakdown, IRPF retention when applicable, exemption reasons, bank account with polite payment note, QR + "VERI*FACTU" + AEAT CSV.
-- Chain integrity: previous-hash reference per empresa per environment, tracked in `verifactu_submissions` sidecar table.
+---
+
+## What it handles
+
+- **Invoicing** — outgoing (facturas emitidas) and incoming (facturas recibidas), including
+  foreign clients, multi-currency, and IVA-exempt operations.
+- **Verifactu** — AEAT real-time invoice registration (mandatory from 2027), with hash
+  chains and QR codes on every invoice.
+- **Quarterly filings** — Modelo 303 (IVA), Modelo 130 (IRPF, autónomos), Modelo 202
+  (IS pago fraccionado, SLs). Guided by the AI agent.
+- **Corrective invoices** — facturas rectificativas following the correct legal pattern.
+- **Multi-empresa** — multiple SLs and autónomos on the same install, each with its own
+  AEAT certificate and independent Verifactu hash chain.
+
+---
 
 ## Architecture
 
 ```
-                        ┌────────────┐
-                        │    You     │
-                        │ (browser)  │
-                        └─────┬──────┘
-                              │  HTTP(S)
-                              ▼
-        ┌──────────────────────────────────────────────┐
-        │                docker-compose                │
-        │  ┌────────┐  ┌────────────┐  ┌────────────┐  │
-        │  │ nginx  ├──►    app     ├──►     db     │  │
-        │  │(alpine)│  │(FS + PHP + │  │ (mariadb)  │  │
-        │  │        │  │  scripts)  │  │            │  │
-        │  └────────┘  └────────────┘  └────────────┘  │
-        └──────────────────────────────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │   AEAT SOAP     │
-                    │ (pre/prod)      │
-                    └─────────────────┘
+          ┌─────────────────────────────────────────────┐
+          │           AI Agent (Claude Code)             │
+          │  reads PDFs · imports invoices · files taxes │
+          │  answers tax questions · guides migrations   │
+          └─────────────────────┬───────────────────────┘
+                                │ tool calls (Bash, Read, Edit)
+          ┌─────────────────────▼───────────────────────┐
+          │               docker-compose                 │
+          │                                              │
+          │  ┌──────────┐  ┌──────────────┐  ┌───────┐  │
+          │  │  nginx   ├──►     app      ├──►  db   │  │
+          │  │ (proxy)  │  │ FS + PHP CLI │  │MariaDB│  │
+          │  └──────────┘  └──────┬───────┘  └───────┘  │
+          └─────────────────────┬─┴──────────────────────┘
+                           browser   SOAP
+                                │       │
+                           ┌────▼┐  ┌───▼─────────┐
+                           │ You │  │    AEAT      │
+                           │(UI) │  │ pre / prod   │
+                           └─────┘  └─────────────┘
 ```
+
+---
+
+## Tech stack
+
+| Component | Role |
+|---|---|
+| [FacturaScripts](https://github.com/NeoRazorX/facturascripts) (LGPL) | Invoicing UI, customer/product management, double-entry accounting |
+| Custom PHP CLI scripts | Verifactu submitter, invoice importer, PDF generator |
+| [josemmo/verifactu-php](https://github.com/josemmo/Verifactu-PHP) (MIT) | AEAT SOAP client and Verifactu record models |
+| [mPDF](https://github.com/mpdf/mpdf) (GPL-2.0) | Verifactu-compliant PDF generation with QR + CSV |
+| MariaDB 11 | Storage |
+| nginx + Apache | Reverse proxy + PHP runtime |
+| [Claude Code](https://claude.ai/code) | AI agent — the gestoria brain |
+
+---
 
 ## Prerequisites
 
-- Docker Desktop (with WSL2 integration if on Windows).
-- A Spanish digital certificate (`.p12` / `.pfx`) for each empresa. Free from the FNMT via video-ID.
-- Basic familiarity with the terminal.
+- Docker Desktop (with WSL2 integration on Windows).
+- A Spanish digital certificate (`.p12` / `.pfx`) for each empresa. Obtainable free from
+  the FNMT via video-ID appointment.
+- [Claude Code](https://claude.ai/code) for the AI autopilot layer (optional for CLI/manual modes).
+- Basic comfort with the terminal.
+
+---
 
 ## Quick start
 
@@ -76,166 +103,202 @@ git clone https://github.com/YOURUSER/verifactu-stack.git
 cd verifactu-stack
 
 cp .env.example .env
-# Edit .env: set MARIADB_ROOT_PASSWORD and MARIADB_PASSWORD
+# Edit: set MARIADB_ROOT_PASSWORD and MARIADB_PASSWORD
 
 cp secrets/companies.php.example secrets/companies.php
-# Edit secrets/companies.php: set empresa NIFs, cert paths, cert passwords, DB pass
+# Edit: add empresa NIF, cert path, cert password
 
-# Copy your digital certificates into ./secrets/
-cp ~/path-to/sl-cert.p12       secrets/sl-cert.p12
-cp ~/path-to/autonomo-cert.p12 secrets/autonomo-cert.p12
-
+cp ~/path-to/cert.p12 secrets/
 chmod 600 .env secrets/companies.php secrets/*.p12
 
 docker compose up -d --build
+# First build: 3–5 minutes (PHP extensions, Composer, npm)
 ```
 
-First build takes 3–5 minutes (PHP extensions, Composer, npm). Then open
-`http://localhost/` and complete FacturaScripts' first-run installer.
+Open `http://localhost/` and complete FacturaScripts' first-run installer.
 
-## Configuration
+For a complete guided setup including FacturaScripts initialization, series/sequences,
+and your first Verifactu test submission, open Claude Code in this directory and say:
 
-### `.env`
+> "Help me set up Verifactu Stack from scratch."
 
-MariaDB credentials. Docker-compose reads this at container start.
+The agent will run the `onboarding` skill and walk you through every step.
 
-```
-MARIADB_ROOT_PASSWORD=strong-root-password
-MARIADB_DATABASE=facturascripts
-MARIADB_USER=fsuser
-MARIADB_PASSWORD=strong-user-password
-```
+---
 
-### `secrets/companies.php`
+## Skills — the agent's instruction set
 
-The main config file for the Verifactu scripts. Never commit this. Read only inside the container.
+The `skills/` directory contains Markdown files that tell the AI agent how to perform
+specific tasks. Think of them as a team handbook: before starting a task, the agent reads
+the relevant skill so it knows the correct steps, safety rules, and edge cases.
 
-Key sections:
+| Skill | What it covers |
+|---|---|
+| `onboarding.md` | First-time setup: Docker, FacturaScripts, series, certs, first submission |
+| `stack-orientation.md` | Architecture, containers, bind-mounts, how the pieces connect |
+| `database-schema.md` | Full table reference for FacturaScripts + sidecar tables |
+| `command-safety.md` | What the agent runs freely vs. what needs explicit user approval |
+| `incoming-invoice-agent.md` | Reading and importing supplier invoices from PDFs |
+| `outgoing-invoice-agent.md` | Reading and importing customer invoices (facturas emitidas) |
+| `tax-calendar-spain.md` | Filing deadlines for all relevant Spanish tax models |
+| `filing-iva-303.md` | Modelo 303 quarterly IVA return — field-by-field guide |
+| `filing-irpf-130.md` | Modelo 130 quarterly IRPF payment (autónomos) |
+| `filing-sustitutiva.md` | Correcting a prior filing with a sustitutiva on SEDE |
+| `rectificativa-por-error.md` | Issuing a corrective invoice (factura rectificativa) |
+| `historical-import.md` | Migrating books from a prior gestor |
 
-- `database` — DB connection (reads from env vars in Docker).
-- `sif` — Sistema Informático de Facturación metadata: id, name, version, installation_number, environment default.
-- `series` — Per-invoice-series environment allowlist. Test series (`T`) restricted to preproducción.
-- `empresas` — Per-empresa (NIF-keyed) identity + cert path + cert password.
-
-See `secrets/companies.php.example` for the shape.
-
-## Usage
-
-Everything runs through `docker compose exec`:
-
-### Access FacturaScripts UI
-
-```
-http://localhost/
-```
-
-### Submit pending invoices to AEAT
-
-```bash
-# Preproducción (safe sandbox — no fiscal effect)
-docker compose exec app php /verifactu/submit-pending.php --env=preproduccion
-
-# Producción (LIVE — real fiscal record at AEAT)
-docker compose exec app php /verifactu/submit-pending.php --env=produccion
-
-# Dry-run (validates + hashes locally, does not send)
-docker compose exec app php /verifactu/submit-pending.php --env=preproduccion --dry-run
-```
-
-Each run picks up invoices not yet submitted in the given environment and processes them in
-chain order. Series flagged as preproducción-only are skipped in producción runs.
-
-### Generate a customer-facing PDF
-
-```bash
-# Auto-picks producción row if it exists, else preproducción
-docker compose exec app php /verifactu/make-invoice-pdf.php 2026-A027
-
-# Force environment
-docker compose exec app php /verifactu/make-invoice-pdf.php 2026-A027 --env=produccion
-```
-
-Output lands in `./verifactu/invoices/` on the host (bind-mounted from the container).
+---
 
 ## Environments
 
-The stack maintains **two independent chains** in the same `verifactu_submissions` table, keyed by an
-`environment` column. This lets you exercise the full pipeline in preproducción and switch to
-producción when ready without wiping local state.
+The stack maintains two independent Verifactu chains in the same database:
 
-To reduce accident risk:
+- **Preproducción** — AEAT sandbox, no fiscal effect. Safe to test with real data.
+- **Producción** — live AEAT. Every submission has permanent fiscal effect.
 
-- **Config default** is preproducción unless explicitly overridden.
-- `--env=produccion` prints `LIVE, real fiscal effect` to stderr before submission.
-- **Series `T` is preproducción-only**, so test invoices can never accidentally hit producción.
+The agent defaults to preproducción and always asks for explicit confirmation before
+touching producción. See `command-safety.md` for the full ruleset.
 
-## Data model
+---
 
-- `verifactu_submissions` (created by `verifactu/setup-sidecar.sql`) — one row per invoice per environment. Tracks status, hash, CSV, QR URL/path, chain reference, error message.
-- FacturaScripts' own tables — everything else (customers, invoices, empresas, series, sequences).
+## Legal
 
-## Legal disclaimer
+Read [DISCLAIMER.md](DISCLAIMER.md) before running any submission against AEAT.
 
-**This project is not a certified Sistema Informático de Facturación (SIF) with a declaración
-responsable filed at AEAT.** Under Article 13 of RD 1007/2023, a SIF must have a responsible
-declaration signed by its developer. Since this stack is self-built by each deployer,
-**you** as the deployer are effectively both the developer and the taxpayer, and the legal
-responsibility for compliance is entirely yours.
+This project is not a certified Sistema Informático de Facturación (SIF) with a
+declaración responsable filed at AEAT. Under Article 13 of RD 1007/2023, legal
+responsibility for compliance rests entirely with the deployer.
 
-The authors and contributors **bear no responsibility whatsoever** for any tax penalty,
-sanction, incorrect submission, data loss, or any other consequence arising from the use of
-this software. Everything provided here is **as-is, no warranty**.
+The authors bear no responsibility for tax penalties, incorrect submissions, data loss,
+or any other consequence of using this software. Everything is provided as-is.
 
-**Read [DISCLAIMER.md](DISCLAIMER.md) in full before running any command against AEAT.**
-Doing so is a condition of use.
+---
 
-## Producción cutover checklist
+## Philosophy
 
-- [ ] Cert valid at AEAT for the empresa's NIF.
-- [ ] `.env` and `secrets/companies.php` set with real (not test) values.
-- [ ] Preproducción exercised for the invoice types you actually issue.
-- [ ] Series correctly configured (real series `A`, rectificativas `R`; test series `T` not for producción).
-- [ ] Backup strategy for `verifactu_submissions` (mysqldump on a schedule).
-- [ ] Understood that once submitted to producción, records cannot be deleted; corrections only via factura rectificativa.
-- [ ] `installation_number` bumped if migrating from a prior chain.
+The author of this repository believes that gestores and accountants have to adapt to
+artificial intelligence and accordingly work more efficiently, adjusting their prices
+accordingly. I would personally prefer to hire a gestor who uses a system like this —
+one that reduces the time it takes to perform bookkeeping tasks and passes those savings
+on to the client.
 
-## Development / iteration
+This project is a bet that the right role for a professional accountant is review,
+judgement, and client relationship — not data entry.
 
-The `verifactu/` folder is bind-mounted into the container at `/verifactu/`, so you can edit
-`submit-pending.php` / `make-invoice-pdf.php` on the host and see changes on the next run.
-No rebuild needed.
+---
 
-For changes to the Dockerfile, entrypoint, nginx config, or apache vhost — `docker compose up -d --build`.
+## Contributing
 
-## Backups
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Not automated in this repo. Recommended:
-
-- `mysqldump` of `verifactu_submissions` daily to a mounted volume outside the DB container.
-- Nightly copy of the mounted `MyFiles` (invoices, attached logos) volume.
-- Weekly copy of the whole `secrets/` directory to encrypted external storage.
-
-## References
-
-- [Verifactu overview at AEAT sede](https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu.html)
-- [Real Decreto 1007/2023](https://www.boe.es/buscar/act.php?id=BOE-A-2023-24840)
-- [Orden HAC/1177/2024 (technical)](https://www.boe.es/diario_boe/txt.php?id=BOE-A-2024-22138)
+---
 
 ## Credits
 
-- **[josemmo/Verifactu-PHP](https://github.com/josemmo/Verifactu-PHP)** — MIT — AEAT SOAP client and record models.
-- **[chillerlan/php-qrcode](https://github.com/chillerlan/php-qrcode)** — MIT — QR PNG rendering.
-- **[mpdf/mpdf](https://github.com/mpdf/mpdf)** — GPL-2.0-or-later — HTML-to-PDF.
-- **[FacturaScripts](https://github.com/NeoRazorX/facturascripts)** — LGPL — invoicing UI + data model.
+- **[josemmo/Verifactu-PHP](https://github.com/josemmo/Verifactu-PHP)** — MIT
+- **[chillerlan/php-qrcode](https://github.com/chillerlan/php-qrcode)** — MIT
+- **[mpdf/mpdf](https://github.com/mpdf/mpdf)** — GPL-2.0-or-later
+- **[FacturaScripts](https://github.com/NeoRazorX/facturascripts)** — LGPL
 
 ## License
 
 This project's own code is released under the MIT license. See `LICENSE`.
 
-Note that some transitive dependencies (mpdf, FacturaScripts) are under LGPL/GPL. If you
-distribute a modified build, review those licenses' obligations before doing so. Running
-your own instance for your own business is unaffected.
+Transitive dependencies (mpdf, FacturaScripts) carry LGPL/GPL obligations for
+distribution. Running your own instance for your own business is unaffected.
+
+---
+---
+
+# Verifactu Stack *(en español)*
+
+**Una gestoría IA de código abierto y autoalojada para empresas y autónomos españoles.**
+
+Importa facturas soltando PDFs en una carpeta. Presenta declaraciones trimestrales en
+una conversación guiada con un agente de IA. Todo en tu propio hardware o servidor.
+Sin suscripciones, sin que tus datos pasen por terceros.
 
 ---
 
-Built by someone who didn't want to pay a subscription for something that used to be free.
+## Visión
+
+Un gestor tradicional cobra entre 150 y 500 €/mes por tareas que son, en esencia,
+mecánicas: leer facturas, introducir números y presentar modelos a la AEAT. La mayor
+parte de ese coste es tiempo humano dedicado a trabajo repetitivo que el software puede
+realizar.
+
+Verifactu Stack reemplaza esa capa mecánica con un agente de IA — [Claude Code](https://claude.ai/code)
+— que lee PDFs, entiende la normativa fiscal española, introduce datos en FacturaScripts
+y te guía paso a paso en las presentaciones ante la AEAT. Un humano — tú, o un gestor
+que use este sistema — supervisa y aprueba cada acción relevante.
+
+El sistema tiene tres modos de operación:
+
+| Modo | Usuario | Qué ocurre |
+|---|---|---|
+| **Piloto automático IA** | Empresario con Claude Code | Suelta PDFs, chatea con el agente, presenta modelos guiado por la conversación |
+| **CLI** | Usuario técnico | Ejecuta scripts PHP directamente contra la BD y la AEAT |
+| **Manual** | Cualquiera | Usa directamente la interfaz web de FacturaScripts |
+
+Los tres modos escriben en la misma base de datos y son completamente intercambiables.
+
+---
+
+## Qué cubre
+
+- **Facturación** — emitidas y recibidas, incluyendo clientes extranjeros, multidivisa
+  y operaciones exentas de IVA.
+- **Verifactu** — registro en tiempo real de facturas en la AEAT (obligatorio desde 2027),
+  con cadena de hashes y códigos QR en cada factura.
+- **Declaraciones trimestrales** — Modelo 303 (IVA), Modelo 130 (IRPF, autónomos),
+  Modelo 202 (IS pago fraccionado, SLs). Guiado por el agente IA.
+- **Facturas rectificativas** — siguiendo el patrón legal correcto.
+- **Multi-empresa** — varias SL y autónomos en la misma instalación, cada uno con su
+  propio certificado y cadena Verifactu independiente.
+
+---
+
+## Inicio rápido
+
+```bash
+git clone https://github.com/YOURUSER/verifactu-stack.git
+cd verifactu-stack
+
+cp .env.example .env
+# Edita: pon MARIADB_ROOT_PASSWORD y MARIADB_PASSWORD
+
+cp secrets/companies.php.example secrets/companies.php
+# Edita: añade NIF de la empresa, ruta al certificado y contraseña
+
+cp ~/ruta/certificado.p12 secrets/
+chmod 600 .env secrets/companies.php secrets/*.p12
+
+docker compose up -d --build
+```
+
+Abre `http://localhost/` y completa el asistente de primera ejecución de FacturaScripts.
+
+Para una guía completa, abre Claude Code en este directorio y di:
+
+> "Ayúdame a configurar Verifactu Stack desde cero."
+
+---
+
+## Aviso legal
+
+Lee [DISCLAIMER.md](DISCLAIMER.md) antes de ejecutar cualquier envío contra la AEAT.
+Este proyecto no es un SIF certificado con declaración responsable presentada ante la
+AEAT; la responsabilidad legal del cumplimiento es enteramente tuya.
+
+---
+
+## Filosofía
+
+El autor de este repositorio cree que los gestores y contables tienen que adaptarse a
+la inteligencia artificial y, en consecuencia, trabajar de forma más eficiente,
+ajustando sus honorarios en la misma medida. Personalmente, preferiría contratar a un
+gestor que use un sistema como este — uno que reduzca el tiempo necesario para llevar
+mi contabilidad y que traslade ese ahorro al cliente.
+
+Este proyecto apuesta a que el papel correcto del contable profesional es la revisión,
+el criterio y la relación con el cliente — no la introducción de datos.

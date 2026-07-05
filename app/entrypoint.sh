@@ -68,5 +68,20 @@ if [ -d "${VF_DIR}" ]; then
     fi
 fi
 
+# --- Deploy FacturaScripts Dinamic (View/Controller/Lib/etc) --------------------
+# Must run after config.php is written. Safe to re-run on every boot — it only
+# copies files, no DB writes. The fs_dinamic named volume keeps the result across
+# container recreations so this is fast after the first boot.
+echo "[entrypoint] Deploying FacturaScripts Dinamic..."
+php -r "
+    const FS_FOLDER = '${FS_DIR}';
+    require '${FS_DIR}/vendor/autoload.php';
+    require '${FS_DIR}/config.php';
+    \FacturaScripts\Core\Plugins::deploy(true, true);
+" && echo "[entrypoint] Dinamic deploy complete." \
+  || echo "[entrypoint] WARN: Dinamic deploy failed — check permissions or FS version."
+
+chown -R www-data:www-data "${FS_DIR}/Dinamic" "${FS_DIR}/MyFiles"
+
 echo "[entrypoint] Handing off to Apache..."
 exec "$@"

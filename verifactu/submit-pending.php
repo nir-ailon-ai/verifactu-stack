@@ -6,9 +6,10 @@
  *
  * Usage:
  *   cd ~/verifactu-poc
- *   php submit-pending.php                 # submit pending invoices
- *   php submit-pending.php --dry-run       # show what would happen
- *   php submit-pending.php --limit=10      # cap how many to process
+ *   php submit-pending.php                       # all configured empresas
+ *   php submit-pending.php --empresa=B12345678   # one empresa only
+ *   php submit-pending.php --dry-run             # show what would happen
+ *   php submit-pending.php --limit=10            # cap how many to process
  */
 
 require __DIR__ . '/vendor/autoload.php';
@@ -32,10 +33,11 @@ use chillerlan\QRCode\Output\QROutputInterface;
 use chillerlan\QRCode\Common\EccLevel;
 
 // ===== CLI args =====
-$opts    = getopt('', ['dry-run', 'limit:', 'env:']);
-$dryRun  = isset($opts['dry-run']);
-$limit   = isset($opts['limit']) ? max(1, (int)$opts['limit']) : 50;
-$envArg  = isset($opts['env']) ? strtolower(trim($opts['env'])) : null;
+$opts       = getopt('', ['dry-run', 'limit:', 'env:', 'empresa:']);
+$dryRun     = isset($opts['dry-run']);
+$limit      = isset($opts['limit']) ? max(1, (int)$opts['limit']) : 50;
+$envArg     = isset($opts['env'])     ? strtolower(trim($opts['env']))     : null;
+$empresaArg = isset($opts['empresa']) ? strtoupper(preg_replace('/[\s.\-]/u', '', trim($opts['empresa']))) : null;
 
 // ===== Config =====
 // Look in /secrets first (Docker layout), then next to the script (dev).
@@ -63,6 +65,9 @@ if (!in_array($env, ['preproduccion','produccion'], true)) {
 $isProduction = ($env === 'produccion');
 
 echo "Environment: $env" . ($isProduction ? " (LIVE, real fiscal effect)" : " (sandbox)") . "\n";
+if ($empresaArg) {
+    echo "Empresa    : $empresaArg (filtered)\n";
+}
 
 $qrDir = __DIR__ . '/qr';
 if (!is_dir($qrDir)) mkdir($qrDir, 0700, true);
@@ -83,6 +88,7 @@ $db = new PDO(
 );
 
 // ===== Pending invoices (now also pulling country + tipoidfiscal) =====
+$empresaFilter = $empresaArg ? "AND e.cifnif = :empresa_nif" : "";
 $sql = "
 SELECT f.idfactura, f.codigo, f.codserie, f.fecha, f.total, f.totaliva,
        f.cifnif AS recipient_nif, f.nombrecliente, f.codigorect, f.idfacturarect,
@@ -99,11 +105,14 @@ LEFT JOIN verifactu_submissions vs
       AND vs.status = 'submitted'
       AND vs.environment = :env_pending
 WHERE vs.id IS NULL
+$empresaFilter
 ORDER BY e.cifnif, f.fecha, f.idfactura
 LIMIT $limit
 ";
 $pendingStmt = $db->prepare($sql);
-$pendingStmt->execute([':env_pending' => $env]);
+$params = [':env_pending' => $env];
+if ($empresaArg) $params[':empresa_nif'] = $empresaArg;
+$pendingStmt->execute($params);
 $pending = $pendingStmt->fetchAll();
 
 echo "Pending invoices: " . count($pending) . "\n";

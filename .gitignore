@@ -5,6 +5,9 @@ secrets/*
 verifactu/vendor/
 verifactu/qr/
 verifactu/invoices/
+incoming/pdfs/
+incoming/processed/
+incoming/.agent-extract.json
 *.pdf
 *.png
 .DS_Store

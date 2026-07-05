@@ -56,12 +56,20 @@ verifactu-stack/
 │   ├── vendor/                # composer deps (gitignored)
 │   ├── qr/                    # generated QR PNGs (gitignored)
 │   └── invoices/              # generated PDFs (gitignored)
+├── incoming/                  # bind-mounted into container at /incoming/
+│   ├── process-invoice.php    # CLI: import supplier invoices
+│   ├── process-sale.php       # CLI: import customer invoices
+│   ├── list-imports.php       # CLI: review import history
+│   ├── setup-sidecar.sql      # migration for incoming_invoice_imports + outgoing_invoice_exports
+│   ├── pdfs/                  # drop invoices here (gitignored)
+│   └── processed/             # moved here after import (gitignored)
 └── skills/                    # this directory (agent instruction files)
 ```
 
 Bind mounts you should know:
 - `./secrets` → `/secrets` (read-only inside container). Cert files + companies.php.
 - `./verifactu` → `/verifactu` (read/write). Scripts + generated artifacts.
+- `./incoming` → `/incoming` (read/write). Import scripts + PDF staging area.
 - `fs_myfiles` (named volume) → `/var/www/html/facturas/MyFiles`. FS uploads (logos, attachments).
 
 ## How the pieces talk
@@ -101,6 +109,23 @@ Safety features:
 - Producción runs print `LIVE, real fiscal effect` to stderr.
 - Invoice series with a `preproduccion`-only entry in `companies.php` → `series`
   are skipped in producción runs. Convention: series `T` is preproducción-only.
+
+## The two script pipelines
+
+**Verifactu pipeline** (`verifactu/`) — submits issued invoices to AEAT and generates
+customer PDFs. Operates on invoices already in FacturaScripts.
+
+**Import pipeline** (`incoming/`) — reads PDF invoices (from suppliers or customers),
+extracts data (via the AI agent or a Claude API call), and writes them into FS tables.
+The two scripts:
+
+| Script | Direction | FS tables written |
+|---|---|---|
+| `process-invoice.php` | Supplier → FS | `facturasprov`, `lineasfacturasprov` |
+| `process-sale.php` | Customer → FS | `facturascli`, `lineasfacturascli` |
+
+Both support `--dry-run`, `--empresa=<NIF>`, and `--historical` (skip sequence + mark
+exempt in Verifactu chain). See `incoming-invoice-agent.md` and `outgoing-invoice-agent.md`.
 
 ## Frequently-used commands the agent should know
 

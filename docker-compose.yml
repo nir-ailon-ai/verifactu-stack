@@ -30,9 +30,12 @@ services:
       DB_PASS: ${MARIADB_PASSWORD}
       FS_LANG: es_ES
       FS_TIMEZONE: Europe/Madrid
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     volumes:
       - fs_myfiles:/var/www/html/facturas/MyFiles
+      - fs_dinamic:/var/www/html/facturas/Dinamic
       - ./verifactu:/verifactu
+      - ./incoming:/incoming
       - ./secrets:/secrets:ro
     depends_on:
       db:
@@ -60,6 +63,7 @@ services:
 volumes:
   db_data:
   fs_myfiles:
+  fs_dinamic:
   certbot_www:
 
 networks:
