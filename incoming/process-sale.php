@@ -30,6 +30,7 @@ const MAX_FILE_BYTES = 32 * 1024 * 1024;
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
 $dryRun     = false;
+$historical = false;
 $empresaNif = null;
 $jsonFile   = null;
 $positional = [];
@@ -37,6 +38,7 @@ $positional = [];
 for ($i = 1; $i < $argc; $i++) {
     $arg = $argv[$i];
     if ($arg === '--dry-run')                      { $dryRun = true; }
+    elseif ($arg === '--historical')               { $historical = true; }
     elseif (str_starts_with($arg, '--empresa='))   { $empresaNif = strtoupper(trim(substr($arg, 10))); }
     elseif (str_starts_with($arg, '--json-file=')) { $jsonFile = substr($arg, 12); }
     elseif (!str_starts_with($arg, '-'))           { $positional[] = $arg; }
@@ -113,7 +115,7 @@ echo "Empresa : {$empresa['nombre']} ({$empresa['cifnif']})\n";
 if ($dryRun) echo "Mode    : DRY RUN — nothing will be written\n";
 echo "\n";
 
-$result = processFile($pdo, $singleFile, $empresa, $jsonFile, $dryRun);
+$result = processFile($pdo, $singleFile, $empresa, $jsonFile, $dryRun, $historical);
 exit($result === 'err' ? 1 : 0);
 
 
@@ -126,7 +128,7 @@ function lookupEmpresaByNif(PDO $db, string $nif): ?array
     return $s->fetch() ?: null;
 }
 
-function processFile(PDO $db, string $filePath, array $empresa, string $jsonFile, bool $dryRun): string
+function processFile(PDO $db, string $filePath, array $empresa, string $jsonFile, bool $dryRun, bool $historical = false): string
 {
     $base = basename($filePath);
     printf('[%s] ', $base);
@@ -190,11 +192,22 @@ function processFile(PDO $db, string $filePath, array $empresa, string $jsonFile
         $obs = "Ref. cliente: $numOrig";
     }
 
+    // Resolve codigo/numero: for historical invoices use the JSON number directly.
+    $serie = DEFAULT_SERIE;
+    if ($historical) {
+        // Format: "A001" → "2026-A001", or use as-is if it already has the year prefix.
+        $rawNum = $numOrig;
+        $codigoResolved = str_starts_with($rawNum, $ejercicio) ? $rawNum : ($ejercicio . '-' . $rawNum);
+        $numeroResolved = (string)(int)preg_replace('/[^0-9]/', '', $rawNum);
+    }
+
     if ($dryRun) {
-        printf("OK [dry-run]\n");
+        $label = $historical ? 'dry-run, historical — no Verifactu' : 'dry-run';
+        printf("OK [%s]\n", $label);
         printf("  Empresa : %s (%s)\n",  $empresa['nombre'], $empresa['cifnif']);
         printf("  Client  : %s  NIF=%s\n", $client['name'], $client['nif'] ?? '—');
         printf("  Invoice : %s  date=%s\n", $numOrig, $inv['date']);
+        if ($historical) printf("  FS code : %s  (no Verifactu — non_applicable)\n", $codigoResolved);
         printf("  Lines   : %d  neto=%.2f EUR  IVA=%.2f  IRPF=%.2f  total=%.2f EUR\n",
                count($lines), $neto, $totalIva, $totalIrpf, $total);
         if ($origCurrency && $origCurrency !== 'EUR' && $totalOrig > 0)
@@ -206,14 +219,19 @@ function processFile(PDO $db, string $filePath, array $empresa, string $jsonFile
     try {
         $db->beginTransaction();
 
-        $codCliente       = upsertCliente($db, $client);
-        [$numero, $codigo] = nextCodigo($db, (int)$empresa['idempresa'], DEFAULT_SERIE, $ejercicio);
-        $idEstado         = getDefaultEstado($db);
+        $codCliente = upsertCliente($db, $client);
+        $idEstado   = getDefaultEstado($db);
+        if ($historical) {
+            $numero = $numeroResolved;
+            $codigo = $codigoResolved;
+        } else {
+            [$numero, $codigo] = nextCodigo($db, (int)$empresa['idempresa'], $serie, $ejercicio);
+        }
 
         $idfactura = insertFacturaCli($db, [
             'codigo'        => $codigo,
             'numero'        => $numero,
-            'codserie'      => DEFAULT_SERIE,
+            'codserie'      => $serie,
             'codejercicio'  => $ejercicio,
             'codcliente'    => $codCliente,
             'cifnif'        => normalizeNif((string)($client['nif'] ?? '')),
@@ -237,11 +255,24 @@ function processFile(PDO $db, string $filePath, array $empresa, string $jsonFile
         ]);
 
         insertLineas($db, $idfactura, $lines);
+
+        if ($historical) {
+            $vsStmt = $db->prepare(
+                "INSERT IGNORE INTO verifactu_submissions
+                    (empresa_nif, environment, idfactura, invoice_code, issue_date, total_amount, status)
+                 VALUES (?, ?, ?, ?, ?, ?, 'non_applicable')"
+            );
+            foreach (['preproduccion', 'produccion'] as $vsEnv) {
+                $vsStmt->execute([$empresa['cifnif'], $vsEnv, $idfactura, $codigo, $inv['date'], $total]);
+            }
+        }
+
         recordExport($db, $filePath, $hash, $idfactura, $empresa['cifnif'],
                      $client['nif'] ?? null, $numOrig, 'imported', $confidence, null);
 
         $db->commit();
-        printf("OK  idfactura=%-5d  %s  [%s]\n", $idfactura, $codigo, $confidence);
+        $label = $historical ? 'historical, non_applicable' : $confidence;
+        printf("OK  idfactura=%-5d  %s  [%s]\n", $idfactura, $codigo, $label);
         return 'ok';
 
     } catch (Throwable $e) {

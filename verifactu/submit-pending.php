@@ -102,7 +102,7 @@ LEFT JOIN clientes c ON c.codcliente = f.codcliente
 LEFT JOIN facturascli forig ON forig.idfactura = f.idfacturarect
 LEFT JOIN verifactu_submissions vs
        ON vs.idfactura = f.idfactura
-      AND vs.status = 'submitted'
+      AND vs.status IN ('submitted', 'non_applicable')
       AND vs.environment = :env_pending
 WHERE vs.id IS NULL
 $empresaFilter

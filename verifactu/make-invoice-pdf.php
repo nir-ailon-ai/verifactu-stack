@@ -195,6 +195,26 @@ $outPath = $outDir . "/{$inv['empresa_nif']}_{$safe}.pdf";
 $mpdf->Output($outPath, \Mpdf\Output\Destination::FILE);
 echo "PDF written: $outPath\n";
 
+// Upload to MinIO under docs/{nif}/{year}/T{q}/emitidas/{filename}
+if (file_exists('/incoming/MinioClient.php')) {
+    require_once '/incoming/MinioClient.php';
+    try {
+        $minio   = MinioClient::fromEnv();
+        $fecha   = $inv['fecha'] ?? date('Y-m-d'); // YYYY-MM-DD
+        $year    = substr($fecha, 0, 4);
+        $month   = (int)substr($fecha, 5, 2);
+        $quarter = 'T' . ceil($month / 3);
+        $nif     = $inv['empresa_nif'];
+        $bucket  = 'docs';
+        $key     = "$nif/$year/$quarter/emitidas/{$nif}_{$safe}.pdf";
+        $minio->createBucket($bucket);
+        $ok = $minio->putObject($bucket, $key, file_get_contents($outPath), 'application/pdf');
+        echo "MinIO: " . ($ok ? "uploaded → docs/$key" : "upload FAILED") . "\n";
+    } catch (Throwable $e) {
+        fwrite(STDERR, "MinIO upload skipped: " . $e->getMessage() . "\n");
+    }
+}
+
 // ===== Helpers =====
 function fmt(float $n): string  { return number_format($n, 2, ',', '.'); }
 function pct(float $n): string  { return rtrim(rtrim(number_format($n, 2, ',', ''), '0'), ',') . ' %'; }
