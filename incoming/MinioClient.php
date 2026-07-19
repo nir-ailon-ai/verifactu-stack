@@ -141,9 +141,11 @@ class MinioClient
         ksort($query);
         $qStr = http_build_query($query, '', '&', PHP_QUERY_RFC3986);
 
+        $encPath = $this->encodedPath($path);
+
         $canonical = implode("\n", [
             'GET',
-            $path,
+            $encPath,
             $qStr,
             "host:$host\n",
             'host',
@@ -155,7 +157,7 @@ class MinioClient
         ]);
 
         $sig = hash_hmac('sha256', $strToSign, $this->signingKey($date));
-        return $this->endpoint . $path . '?' . $qStr . '&X-Amz-Signature=' . $sig;
+        return $this->endpoint . $encPath . '?' . $qStr . '&X-Amz-Signature=' . $sig;
     }
 
     // ── Internals ───────────────────────────────────────────────────────────
@@ -163,6 +165,12 @@ class MinioClient
     private function path(string $bucket, string $key): string
     {
         return '/' . $bucket . '/' . ltrim($key, '/');
+    }
+
+    /** URI-encode each path segment but preserve slashes (for Sig V4 canonical URI). */
+    private function encodedPath(string $path): string
+    {
+        return implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
     private function host(): string
@@ -206,8 +214,10 @@ class MinioClient
         ksort($query);
         $qStr = http_build_query($query, '', '&', PHP_QUERY_RFC3986);
 
+        $encPath = $this->encodedPath($path);
+
         $canonical = implode("\n", [
-            $method, $path, $qStr, $canonHdrs, $signedKeys, $hash,
+            $method, $encPath, $qStr, $canonHdrs, $signedKeys, $hash,
         ]);
 
         $scope     = "$date/{$this->region}/s3/aws4_request";
@@ -217,7 +227,7 @@ class MinioClient
         $headers['Authorization'] = "AWS4-HMAC-SHA256 Credential={$this->accessKey}/$scope,"
             . " SignedHeaders=$signedKeys, Signature=$sig";
 
-        $url = $this->endpoint . $path . ($qStr ? "?$qStr" : '');
+        $url = $this->endpoint . $encPath . ($qStr ? "?$qStr" : '');
         return $this->curl($method, $url, $headers, $body);
     }
 

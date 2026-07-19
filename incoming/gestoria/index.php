@@ -13,9 +13,11 @@
 
 require_once dirname(__DIR__) . '/MinioClient.php';
 
-const BUCKET = 'docs';
-const DOC_TYPES = ['recibidas', 'emitidas', 'declaraciones', 'eoy'];
-const QUARTERS  = ['T1', 'T2', 'T3', 'T4'];
+const BUCKET          = 'docs';
+const QUARTERLY_TYPES = ['recibidas', 'emitidas', 'declaraciones'];
+const MONTHLY_TYPES   = ['recibidas', 'emitidas'];   // these allow an optional month sub-folder
+const COMPANY_TYPES   = ['contratos', 'notas'];       // no year/quarter
+const QUARTERS        = ['T1', 'T2', 'T3', 'T4'];
 
 $minio = MinioClient::fromEnv();
 
@@ -70,23 +72,33 @@ function apiUpload(MinioClient $minio): void
     $year    = trim($_POST['year']    ?? '');
     $quarter = trim($_POST['quarter'] ?? '');
     $type    = trim($_POST['type']    ?? '');
+    $month   = trim($_POST['month']   ?? '');
 
-    if (!$nif || !$year || !$type) {
-        jsonError('nif, year, type required'); return;
+    if (!$nif || !$type) {
+        jsonError('nif and type required'); return;
     }
-    if (!preg_match('/^\d{4}$/', $year)) {
-        jsonError('invalid year'); return;
-    }
-    if ($type === 'eoy') {
+
+    // Company-level types: no year/quarter
+    if (in_array($type, COMPANY_TYPES, true)) {
+        $prefix = "$nif/$type/";
+
+    // EOY: year-level, no quarter
+    } elseif ($type === 'eoy') {
+        if (!preg_match('/^\d{4}$/', $year)) { jsonError('invalid year'); return; }
         $prefix = "$nif/$year/eoy/";
-    } else {
-        if (!$quarter || !in_array($quarter, QUARTERS, true)) {
-            jsonError('quarter required for this type'); return;
-        }
-        if (!in_array($type, DOC_TYPES, true)) {
-            jsonError('invalid type'); return;
-        }
+
+    // Quarterly types
+    } elseif (in_array($type, QUARTERLY_TYPES, true)) {
+        if (!preg_match('/^\d{4}$/', $year))          { jsonError('invalid year'); return; }
+        if (!in_array($quarter, QUARTERS, true))       { jsonError('invalid quarter'); return; }
         $prefix = "$nif/$year/$quarter/$type/";
+        // Optional month sub-folder for recibidas/emitidas
+        if ($month && in_array($type, MONTHLY_TYPES, true)) {
+            if (!preg_match('/^(0[1-9]|1[0-2])$/', $month)) { jsonError('invalid month'); return; }
+            $prefix .= "$month/";
+        }
+    } else {
+        jsonError('invalid type'); return;
     }
 
     if (empty($_FILES['files']['name'][0])) {
@@ -368,7 +380,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans
     <input type="text" id="nif-custom" placeholder="B12345678" maxlength="9" autocomplete="off" spellcheck="false">
   </div>
 
-  <div class="field">
+  <div class="field" id="year-field">
     <label>Año</label>
     <select id="year">
       <?php foreach ($years as $y): ?>
@@ -386,6 +398,13 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans
     </select>
   </div>
 
+  <div class="field" id="month-field" style="display:none">
+    <label>Mes <span style="font-weight:400;text-transform:none">(opcional)</span></label>
+    <select id="month">
+      <option value="">— Carpeta trimestral —</option>
+    </select>
+  </div>
+
   <div class="field">
     <label>Tipo</label>
     <select id="type">
@@ -393,6 +412,8 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans
       <option value="emitidas">Facturas emitidas</option>
       <option value="declaraciones">Declaraciones AEAT</option>
       <option value="eoy">Cierre anual (EOY)</option>
+      <option value="contratos">Contratos y legal</option>
+      <option value="notas">Notas del gestor</option>
     </select>
   </div>
 
@@ -414,7 +435,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans
 
     <!-- Drop zone -->
     <div class="dropzone" id="dropzone">
-      <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.zip">
+      <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.zip,.md">
       <div class="dropzone-icon">📄</div>
       <div class="dropzone-text">
         <strong>Arrastra archivos aquí</strong> o haz clic para seleccionar<br>
@@ -488,36 +509,67 @@ function onNifChange() {
 }
 
 // ── Selectors ────────────────────────────────────────────────────────────────
-['year','quarter','type'].forEach(id => $(id).addEventListener('change', updatePreview));
+const COMPANY_TYPES  = ['contratos', 'notas'];
+const MONTHLY_TYPES  = ['recibidas', 'emitidas'];
+const MONTH_NAMES    = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const QUARTER_MONTHS = { T1: [1,2,3], T2: [4,5,6], T3: [7,8,9], T4: [10,11,12] };
+
+function refreshMonthOptions() {
+  const q   = $('quarter').value;
+  const sel = $('month');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Carpeta trimestral —</option>';
+  (QUARTER_MONTHS[q] || []).forEach(m => {
+    const mm  = String(m).padStart(2, '0');
+    const opt = document.createElement('option');
+    opt.value = mm;
+    opt.textContent = `${mm} — ${MONTH_NAMES[m]}`;
+    sel.appendChild(opt);
+  });
+  // restore previous selection if it's still valid
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+
+['year','quarter','type','month'].forEach(id => $(id).addEventListener('change', updatePreview));
 $('nif-custom').addEventListener('input', updatePreview);
 
 function currentParams() {
   let nif = $('nif').value.trim().toUpperCase();
   if (nif === '__NEW__') nif = $('nif-custom').value.trim().toUpperCase();
-  const year = $('year').value;
-  const type = $('type').value;
-  const q    = $('quarter').value;
-  return { nif, year, type, quarter: q };
+  const year  = $('year').value;
+  const type  = $('type').value;
+  const q     = $('quarter').value;
+  const month = $('month').value;
+  return { nif, year, type, quarter: q, month };
 }
 
 function currentPrefix() {
-  const { nif, year, type, quarter } = currentParams();
-  if (!nif || !year) return '';
-  if (type === 'eoy') return `${nif}/${year}/eoy/`;
-  return `${nif}/${year}/${quarter}/${type}/`;
+  const { nif, year, type, quarter, month } = currentParams();
+  if (!nif) return '';
+  if (COMPANY_TYPES.includes(type))  return `${nif}/${type}/`;
+  if (!year) return '';
+  if (type === 'eoy')                return `${nif}/${year}/eoy/`;
+  let p = `${nif}/${year}/${quarter}/${type}/`;
+  if (month && MONTHLY_TYPES.includes(type)) p += `${month}/`;
+  return p;
 }
 
 function updatePreview() {
+  const type = $('type').value;
+  const isCompany  = COMPANY_TYPES.includes(type);
+  const isEoy      = type === 'eoy';
+  const isMonthly  = MONTHLY_TYPES.includes(type);
+
+  $('year-field')    && ($('year-field').style.display    = isCompany ? 'none' : '');
+  $('quarter-field').style.display = (isCompany || isEoy) ? 'none' : '';
+  $('month-field').style.display   = isMonthly ? '' : 'none';
+  if (isMonthly) refreshMonthOptions(); else $('month').value = '';
+
   const p = currentPrefix();
   $('key-preview').textContent = p ? `docs/${p}` : '—';
-  // show/hide quarter selector
-  $('quarter-field').style.display = $('type').value === 'eoy' ? 'none' : '';
-  // update topbar
   $('topbar-title').textContent = p ? `docs/${p}` : 'Subir documentos';
-  // auto-refresh browser if visible
   if ($('browser-section').style.display !== 'none') browseFolder();
 }
-$('type').addEventListener('change', updatePreview);
 updatePreview();
 loadCompanies();
 
@@ -566,7 +618,7 @@ function clearQueue() {
 
 // ── Upload ───────────────────────────────────────────────────────────────────
 async function uploadAll() {
-  const { nif, year, type, quarter } = currentParams();
+  const { nif, year, type, quarter, month } = currentParams();
   if (!nif) { toast('Introduce el NIF de la empresa', 'error'); return; }
 
   const pending = queue.filter(i => i.status === 'pending');
@@ -576,9 +628,14 @@ async function uploadAll() {
 
   const form = new FormData();
   form.append('nif', nif);
-  form.append('year', year);
   form.append('type', type);
-  if (type !== 'eoy') form.append('quarter', quarter);
+  if (!COMPANY_TYPES.includes(type)) {
+    form.append('year', year);
+    if (type !== 'eoy') {
+      form.append('quarter', quarter);
+      if (month && MONTHLY_TYPES.includes(type)) form.append('month', month);
+    }
+  }
   pending.forEach(item => { item.status = 'uploading'; form.append('files[]', item.file); });
   renderQueue();
 
@@ -618,7 +675,12 @@ async function uploadAll() {
 // ── File browser ─────────────────────────────────────────────────────────────
 async function browseFolder() {
   const prefix = currentPrefix();
-  if (!prefix) { toast('Selecciona empresa y año primero', 'error'); return; }
+  const { nif, type } = currentParams();
+  const needsNif = !nif;
+  if (!prefix || needsNif) {
+    toast(COMPANY_TYPES.includes(type) ? 'Selecciona empresa primero' : 'Selecciona empresa y año primero', 'error');
+    return;
+  }
 
   $('browser-section').style.display = '';
   $('browser-prefix-label').textContent = `docs/${prefix}`;
@@ -641,7 +703,7 @@ function renderFileList(objects) {
   $('file-list').innerHTML = objects.map(o => {
     const name = o.key.split('/').pop();
     const ext  = name.split('.').pop().toLowerCase();
-    const icon = { pdf: '📄', jpg: '🖼', jpeg: '🖼', png: '🖼', xlsx: '📊', xls: '📊', zip: '🗜' }[ext] || '📎';
+    const icon = { pdf: '📄', jpg: '🖼', jpeg: '🖼', png: '🖼', xlsx: '📊', xls: '📊', zip: '🗜', md: '📝' }[ext] || '📎';
     const date = o.last_modified ? new Date(o.last_modified).toLocaleDateString('es-ES') : '';
     return `
       <div class="file-row">
