@@ -101,32 +101,50 @@ function apiUpload(MinioClient $minio): void
         jsonError('invalid type'); return;
     }
 
-    if (empty($_FILES['files']['name'][0])) {
+    if (empty($_FILES['files']['name'])) {
         jsonError('no files'); return;
+    }
+
+    // Normalize single file to array format
+    $files = $_FILES['files'];
+    if (is_string($files['name'])) {
+        $files = [
+            'name'     => [$files['name']],
+            'type'     => [$files['type']],
+            'tmp_name' => [$files['tmp_name']],
+            'error'    => [$files['error']],
+            'size'     => [$files['size']],
+        ];
     }
 
     $uploaded = [];
     $errors   = [];
+    $results  = []; // one entry per input file, in the original order, for reliable client-side matching
 
-    foreach ($_FILES['files']['name'] as $i => $name) {
-        if ($_FILES['files']['error'][$i] !== UPLOAD_ERR_OK) {
-            $errors[] = "$name: upload error " . $_FILES['files']['error'][$i];
+    foreach ($files['name'] as $i => $name) {
+        if ($files['error'][$i] !== UPLOAD_ERR_OK) {
+            $msg = "$name: upload error " . $files['error'][$i];
+            $errors[]  = $msg;
+            $results[] = ['ok' => false, 'error' => $msg];
             continue;
         }
 
         $safeName = preg_replace('/[^A-Za-z0-9._\-() ]/', '_', $name);
         $key      = $prefix . $safeName;
-        $mime     = $_FILES['files']['type'][$i] ?: 'application/octet-stream';
-        $body     = file_get_contents($_FILES['files']['tmp_name'][$i]);
+        $mime     = $files['type'][$i] ?: 'application/octet-stream';
+        $body     = file_get_contents($files['tmp_name'][$i]);
 
         if ($minio->putObject(BUCKET, $key, $body, $mime)) {
             $uploaded[] = ['key' => $key, 'size' => strlen($body)];
+            $results[]  = ['ok' => true, 'key' => $key, 'size' => strlen($body)];
         } else {
-            $errors[] = "$name: MinIO write failed";
+            $msg = "$name: MinIO write failed";
+            $errors[]  = $msg;
+            $results[] = ['ok' => false, 'error' => $msg];
         }
     }
 
-    echo json_encode(['ok' => empty($errors), 'uploaded' => $uploaded, 'errors' => $errors]);
+    echo json_encode(['ok' => empty($errors), 'uploaded' => $uploaded, 'errors' => $errors, 'results' => $results]);
 }
 
 function apiDownload(MinioClient $minio): void
@@ -640,21 +658,33 @@ async function uploadAll() {
   renderQueue();
 
   try {
-    const res  = await fetch('?api=upload', { method: 'POST', body: form });
+    const res = await fetch('?api=upload', { method: 'POST', body: form });
+
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      if (res.status === 413) detail = 'Los archivos superan el tamaño máximo permitido por lote';
+      queue.filter(i => i.status === 'uploading').forEach(i => { i.status = 'error'; i.error = detail; });
+      toast(detail, 'error');
+      renderQueue();
+      $('upload-btn').disabled = false;
+      return;
+    }
+
     const data = await res.json();
 
-    // mark statuses
-    let ui = 0;
+    // Match results positionally: the server processes files['name'] in the
+    // exact order they were appended below, so results[i] corresponds to the
+    // i-th 'uploading' item. Do not match by reconstructed filename — PHP's
+    // preg_replace sanitizes by byte (splitting multi-byte UTF-8 chars like
+    // ñ/º into two underscores) while JS regex works per code unit (one
+    // underscore), so the two never agree on accented filenames.
+    const results = data.results || [];
+    let ri = 0;
     queue.forEach(item => {
       if (item.status !== 'uploading') return;
-      const uploaded = data.uploaded || [];
-      const matched  = uploaded.find(u => u.key.endsWith(item.file.name.replace(/[^A-Za-z0-9._\-() ]/g, '_')));
-      if (matched) { item.status = 'done'; }
-      else {
-        item.status = 'error';
-        item.error  = data.errors?.[ui] || 'Error';
-        ui++;
-      }
+      const r = results[ri++];
+      if (r && r.ok) { item.status = 'done'; }
+      else { item.status = 'error'; item.error = r?.error || 'Error'; }
     });
 
     if (data.ok) {
@@ -712,7 +742,7 @@ function renderFileList(objects) {
         <span class="file-row-size">${fmtSize(o.size)}</span>
         <span class="file-row-date">${date}</span>
         <a class="file-row-dl" title="Descargar" href="?api=download&key=${encodeURIComponent(o.key)}" download="${esc(name)}">⬇</a>
-        <button class="file-row-del" title="Eliminar" onclick="deleteFile(${JSON.stringify(o.key)})">✕</button>
+        <button class="file-row-del" title="Eliminar" onclick="deleteFile(${esc(JSON.stringify(o.key))})">✕</button>
       </div>
     `;
   }).join('');

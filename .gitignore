@@ -12,3 +12,6 @@ incoming/.agent-extract.json
 *.png
 .DS_Store
 *.log
+backups/
+*.sql
+*.sql.gz

@@ -40,6 +40,7 @@ services:
       - ./verifactu:/verifactu
       - ./incoming:/incoming
       - ./secrets:/secrets:ro
+      - ./app/php.ini:/usr/local/etc/php/conf.d/zz-custom.ini:ro
     depends_on:
       db:
         condition: service_healthy
