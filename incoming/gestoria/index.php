@@ -393,11 +393,6 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans
       <option value="">— Seleccionar —</option>
     </select>
   </div>
-  <div class="field" id="nif-custom-field" style="display:none">
-    <label>NIF de la nueva empresa</label>
-    <input type="text" id="nif-custom" placeholder="B12345678" maxlength="9" autocomplete="off" spellcheck="false">
-  </div>
-
   <div class="field" id="year-field">
     <label>Año</label>
     <select id="year">
@@ -512,17 +507,10 @@ async function loadCompanies() {
       sel.value = data.companies[0].cifnif;
       updatePreview();
     }
-  } catch (e) { /* fall through to manual option */ }
-  const add = document.createElement('option');
-  add.value = '__new__';
-  add.textContent = '+ Añadir empresa…';
-  sel.appendChild(add);
+  } catch (e) { /* company list unavailable */ }
 }
 
 function onNifChange() {
-  const isNew = $('nif').value === '__new__';
-  $('nif-custom-field').style.display = isNew ? '' : 'none';
-  if (!isNew) { $('nif-custom').value = ''; }
   updatePreview();
 }
 
@@ -549,11 +537,9 @@ function refreshMonthOptions() {
 }
 
 ['year','quarter','type','month'].forEach(id => $(id).addEventListener('change', updatePreview));
-$('nif-custom').addEventListener('input', updatePreview);
 
 function currentParams() {
-  let nif = $('nif').value.trim().toUpperCase();
-  if (nif === '__NEW__') nif = $('nif-custom').value.trim().toUpperCase();
+  const nif   = $('nif').value.trim().toUpperCase();
   const year  = $('year').value;
   const type  = $('type').value;
   const q     = $('quarter').value;
