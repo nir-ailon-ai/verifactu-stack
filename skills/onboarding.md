@@ -273,4 +273,7 @@ See `command-safety.md` for the full producción ruleset.
 - `stack-orientation.md` — architecture overview after setup is complete.
 - `incoming-invoice-agent.md` — first supplier invoice import.
 - `outgoing-invoice-agent.md` — first customer invoice import.
+- `gestoria-document-store.md` — the MinIO document archive (`docker compose up -d --build`
+  in Step 3 already starts it; no separate setup step needed beyond creating
+  the empresa in FS, since the gestoria UI reads its company list from there).
 - `command-safety.md` — what the agent can and cannot do autonomously.

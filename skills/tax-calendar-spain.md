@@ -108,11 +108,19 @@ Note: transactions already reported via SII may be exempt from 347.
 
 ## Annual accounts — Registro Mercantil (SLs only)
 
-Not an AEAT model, but a legal obligation. SLs must file annual accounts
-(balance de situación, cuenta de pérdidas y ganancias, memoria) with the
-Registro Mercantil within **3 months of the general shareholders' meeting**, which
-must be held within 6 months of fiscal year end. Effective deadline: around September
-for a December fiscal year.
+Not an AEAT model, but a legal obligation, and a separate institution from
+everything else in this table. SLs must file annual accounts (balance de
+situación, cuenta de pérdidas y ganancias, memoria) with the Registro
+Mercantil within **1 month of the Junta General approving them** (Art. 279
+LSC), and that Junta itself must be held within 6 months of fiscal year
+end (Art. 164 LSC). For a 31 December close: Junta by ~30 June, depósito
+by ~31 July in a clean case — in practice, a Junta running a few weeks late
+(common mid-gestor-transition) just shifts the depósito deadline the same
+few weeks later, it doesn't create a separate violation on its own.
+
+See `deposito-cuentas-registro-mercantil.md` for the full filing process
+(D2 desktop app, common validation errors, and how to read/respond to a
+calificación de defectos if the Registro Mercantil rejects the deposit).
 
 ---
 
@@ -154,4 +162,8 @@ table tracks which invoices have been submitted and when.
 - `filing-iva-303.md` — how to fill and submit Modelo 303.
 - `filing-irpf-130.md` — how to fill and submit Modelo 130.
 - `filing-sustitutiva.md` — how to correct a prior filing.
+- `recargo-extemporaneidad.md` — what happens (and how to respond) when a
+  deadline in this table is missed and filed late.
+- `deposito-cuentas-registro-mercantil.md` — the annual accounts deposit
+  process in detail.
 - `stack-orientation.md` — where and how to run the Verifactu scripts.
