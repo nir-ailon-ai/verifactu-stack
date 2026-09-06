@@ -25,6 +25,7 @@ The stack packages three services with `docker compose`:
 | `db` | `mariadb:11` | Holds FacturaScripts data + the `verifactu_submissions` sidecar |
 | `app` | Custom PHP 8.3 + Apache | FacturaScripts (invoicing UI) + our CLI scripts |
 | `nginx` | `nginx:alpine` | Reverse proxy — port 80/443 to `app:80` |
+| `minio` | `minio/minio` | Object store for scanned documents (contracts, filings, actas) — see `gestoria-document-store.md` |
 
 Ports exposed to the host:
 - **80** and **443** on `nginx` → user opens `http://localhost/` in a browser to reach FS.
@@ -61,7 +62,9 @@ verifactu-stack/
 │   ├── process-sale.php       # CLI: import customer invoices
 │   ├── list-imports.php       # CLI: review import history
 │   ├── setup-sidecar.sql      # migration for incoming_invoice_imports + outgoing_invoice_exports
-│   ├── pdfs/                  # drop invoices here (gitignored)
+│   ├── gestoria/index.php     # MinIO document upload/browse UI — see gestoria-document-store.md
+│   ├── MinioClient.php        # thin MinIO client used by gestoria/index.php
+│   ├── pdfs/                  # drop invoices here (gitignored) — staging only, NOT the archive
 │   └── processed/             # moved here after import (gitignored)
 └── skills/                    # this directory (agent instruction files)
 ```
@@ -171,4 +174,5 @@ See `command-safety.md` for the complete gate ruleset.
 
 - `database-schema.md` — the DB tables and columns you'll query.
 - `command-safety.md` — what's safe, what needs confirmation, what's forbidden.
+- `gestoria-document-store.md` — the MinIO document archive and its upload UI.
 - Task-level skills (`rectificativa-por-error.md`, `create-invoice.md`, etc.) build on all three foundations.
