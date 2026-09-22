@@ -2,6 +2,7 @@
 secrets/*
 !secrets/companies.php.example
 !secrets/.gitkeep
+oauth2-proxy/authenticated-emails.txt
 verifactu/vendor/
 verifactu/qr/
 verifactu/invoices/

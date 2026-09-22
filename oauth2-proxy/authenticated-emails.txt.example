@@ -1,0 +1,4 @@
+# One email address per line. Only these Google accounts will be able to
+# sign in to /gestoria/. Copy this file to authenticated-emails.txt (NOT
+# committed) and edit.
+you@example.com
