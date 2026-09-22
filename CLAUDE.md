@@ -12,6 +12,16 @@ project — task-specific skills exist for filing taxes, importing invoices, the
 store, cloud deployment, etc. Read the relevant one before starting a task rather than
 guessing at the workflow.
 
+Skills document the general process, not any one empresa's current situation. If this
+install has real (non-placeholder) empresas — check `empresas` in the DB — go read that
+company's own notes before assuming anything about where things stand: MinIO holds a
+`{NIF}/notas/*.md` folder per company (see `skills/gestoria-document-store.md`)
+specifically written for a human or agent picking things up cold. Start with
+`00_RESUMEN_EJECUTIVO.md` if one exists. Treat it as a snapshot, not gospel — verify
+anything time-sensitive (deadlines, "pending" claims) against current reality before
+acting on it, and correct the note if it's gone stale, the same way you'd want a prior
+agent to have left it for you.
+
 ## What this is
 
 A self-hosted, Docker-based Spanish invoicing stack with AEAT Verifactu compliance built
