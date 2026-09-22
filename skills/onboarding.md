@@ -185,22 +185,13 @@ Recommended: square PNG, at least 300×300px, transparent background.
 
 ---
 
-## Step 9: Set up sidecar tables
+## Step 9: Sidecar tables (automatic — nothing to do)
 
 The Verifactu submitter and the invoice import scripts use their own sidecar tables
-that are not part of FacturaScripts' native schema.
-
-```bash
-# Verifactu chain tracker
-docker compose exec db mariadb -ufsuser \
-  -p"$(grep MARIADB_PASSWORD ~/verifactu-stack/.env | cut -d= -f2)" \
-  facturascripts < verifactu/setup-sidecar.sql
-
-# Incoming invoice import audit log
-docker compose exec db mariadb -ufsuser \
-  -p"$(grep MARIADB_PASSWORD ~/verifactu-stack/.env | cut -d= -f2)" \
-  facturascripts < incoming/setup-sidecar.sql
-```
+that are not part of FacturaScripts' native schema. `entrypoint.sh` runs both
+`verifactu/setup-sidecar.sql` and `incoming/setup-sidecar.sql` automatically on every
+container boot (`CREATE TABLE IF NOT EXISTS`, safe to re-run), so this step is already
+done by the time `docker compose up` finishes — no manual action needed.
 
 Verify:
 ```bash
@@ -210,8 +201,10 @@ docker compose exec db mariadb -ufsuser \
   -e "SHOW TABLES LIKE 'verifactu%'; SHOW TABLES LIKE '%invoice%';"
 ```
 
-You should see `verifactu_submissions`, `incoming_invoice_imports`, and
-`outgoing_invoice_exports`.
+You should see `verifactu_submissions` and `incoming_invoice_imports`. A third table,
+`outgoing_invoice_exports`, is **not** created here — `process-sale.php` creates it
+lazily, inline, the first time an outgoing (customer) invoice is actually imported.
+Don't expect to see it on a fresh install with no data yet; that's normal.
 
 ---
 

@@ -61,7 +61,8 @@ verifactu-stack/
 │   ├── process-invoice.php    # CLI: import supplier invoices
 │   ├── process-sale.php       # CLI: import customer invoices
 │   ├── list-imports.php       # CLI: review import history
-│   ├── setup-sidecar.sql      # migration for incoming_invoice_imports + outgoing_invoice_exports
+│   ├── setup-sidecar.sql      # migration for incoming_invoice_imports (outgoing_invoice_exports
+│   │                          # is created lazily by process-sale.php on first use, not here)
 │   ├── gestoria/index.php     # MinIO document upload/browse UI — see gestoria-document-store.md
 │   ├── MinioClient.php        # thin MinIO client used by gestoria/index.php
 │   ├── pdfs/                  # drop invoices here (gitignored) — staging only, NOT the archive
