@@ -68,6 +68,13 @@ if [ -d "${VF_DIR}" ]; then
     fi
 fi
 
+# --- Bootstrap incoming-invoice sidecar schema ----------------------------------
+IN_DIR=/incoming
+if [ -f "${IN_DIR}/setup-sidecar.sql" ]; then
+    mysql -h"${DB_HOST}" -P"${DB_PORT}" -u"${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" \
+        < "${IN_DIR}/setup-sidecar.sql" 2>/dev/null || true
+fi
+
 # --- Deploy FacturaScripts Dinamic (View/Controller/Lib/etc) --------------------
 # Must run after config.php is written. Safe to re-run on every boot — it only
 # copies files, no DB writes. The fs_dinamic named volume keeps the result across

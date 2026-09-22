@@ -27,8 +27,15 @@ COPY apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 COPY php.ini /usr/local/etc/php/conf.d/zz-custom.ini
 
 # --- FacturaScripts ------------------------------------------------------------
+# Pinned to a fixed commit so builds are reproducible across machines and over
+# time. To upgrade FacturaScripts deliberately, bump FS_COMMIT below.
+ARG FS_COMMIT=989d1e3975637e4c31fa1a5edf9c925d0218ef99
 WORKDIR /var/www/html
-RUN git clone --depth 1 https://github.com/NeoRazorX/facturascripts.git facturas
+RUN git init facturas \
+    && cd facturas \
+    && git remote add origin https://github.com/NeoRazorX/facturascripts.git \
+    && git fetch --depth 1 origin "${FS_COMMIT}" \
+    && git checkout FETCH_HEAD
 WORKDIR /var/www/html/facturas
 
 # PHP dependencies (composer)

@@ -99,7 +99,7 @@ All three modes write to the same database and are fully interchangeable.
 ## Quick start
 
 ```bash
-git clone https://github.com/YOURUSER/verifactu-stack.git
+git clone https://github.com/nir-ailon-ai/verifactu-stack.git
 cd verifactu-stack
 
 cp .env.example .env
@@ -261,7 +261,7 @@ Los tres modos escriben en la misma base de datos y son completamente intercambi
 ## Inicio rápido
 
 ```bash
-git clone https://github.com/YOURUSER/verifactu-stack.git
+git clone https://github.com/nir-ailon-ai/verifactu-stack.git
 cd verifactu-stack
 
 cp .env.example .env
