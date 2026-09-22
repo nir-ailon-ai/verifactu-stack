@@ -49,7 +49,10 @@ services:
       - frontend
 
   minio:
-    image: minio/minio
+    # minio/minio on Docker Hub was archived 2026-04-25 and stopped serving
+    # anonymous pulls entirely around 2026-09-11 ("pull access denied" /
+    # 401). quay.io is MinIO's own registry and still works.
+    image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
