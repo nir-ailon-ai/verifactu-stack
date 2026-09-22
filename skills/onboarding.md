@@ -276,4 +276,6 @@ See `command-safety.md` for the full producción ruleset.
 - `gestoria-document-store.md` — the MinIO document archive (`docker compose up -d --build`
   in Step 3 already starts it; no separate setup step needed beyond creating
   the empresa in FS, since the gestoria UI reads its company list from there).
+- `cloud-deployment.md` — this same onboarding, but on a fresh cloud server
+  instead of a local machine, plus HTTPS and multi-project hosting.
 - `command-safety.md` — what the agent can and cannot do autonomously.

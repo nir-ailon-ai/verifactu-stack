@@ -175,4 +175,5 @@ See `command-safety.md` for the complete gate ruleset.
 - `database-schema.md` — the DB tables and columns you'll query.
 - `command-safety.md` — what's safe, what needs confirmation, what's forbidden.
 - `gestoria-document-store.md` — the MinIO document archive and its upload UI.
+- `cloud-deployment.md` — moving this stack to a server, HTTPS, multi-project hosting.
 - Task-level skills (`rectificativa-por-error.md`, `create-invoice.md`, etc.) build on all three foundations.
