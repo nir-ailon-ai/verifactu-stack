@@ -126,6 +126,46 @@ The agent will run the `onboarding` skill and walk you through every step.
 
 ---
 
+## Securing the gestoria upload UI
+
+The `/gestoria/` document upload UI has no login of its own by design — it's
+gated separately, at the reverse-proxy layer, via
+[oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) doing Google
+sign-in restricted to an explicit email allowlist. FacturaScripts at `/`
+keeps its own normal login, unaffected.
+
+```bash
+cp oauth2-proxy/authenticated-emails.txt.example oauth2-proxy/authenticated-emails.txt
+# Edit: one email address per line — only these Google accounts can reach /gestoria/
+```
+
+Then, in `.env`, set:
+
+```
+GESTORIA_DOMAIN=              # public hostname this is served on
+OAUTH2_PROXY_CLIENT_ID=       # from Google Cloud Console (see below)
+OAUTH2_PROXY_CLIENT_SECRET=
+OAUTH2_PROXY_REDIRECT_URL=    # https://<GESTORIA_DOMAIN>/oauth2/callback in production;
+                               # http://localhost/oauth2/callback for local testing
+OAUTH2_PROXY_COOKIE_SECURE=   # true in production (HTTPS); false for local HTTP testing
+OAUTH2_PROXY_COOKIE_SECRET=   # random 32 bytes, base64 — see .env.example for how to generate
+```
+
+To get the client ID/secret: Google Cloud Console → **APIs & Services →
+Google Auth Platform** (search "OAuth" in the console's top search bar if
+you can't find it in the sidebar — Google has moved this around; the direct
+URL is `console.cloud.google.com/auth/branding`) → set up **Branding** →
+**Clients** → Create OAuth client ID (Web application) → add **both**
+`https://<GESTORIA_DOMAIN>/oauth2/callback` and
+`http://localhost/oauth2/callback` as Authorized redirect URIs (Google
+explicitly exempts `localhost` from its HTTPS-only rule, so the same client
+works for local testing and production) → then on the **Audience** tab, add
+each allowed sign-in email under **Test users** (required while the app is
+unpublished — sign-ins otherwise expire after 7 days; publishing removes
+that limit and doesn't need Google's review for these basic scopes).
+
+---
+
 ## Skills — the agent's instruction set
 
 The `skills/` directory contains Markdown files that tell the AI agent how to perform
@@ -146,6 +186,10 @@ the relevant skill so it knows the correct steps, safety rules, and edge cases.
 | `filing-sustitutiva.md` | Correcting a prior filing with a sustitutiva on SEDE |
 | `rectificativa-por-error.md` | Issuing a corrective invoice (factura rectificativa) |
 | `historical-import.md` | Migrating books from a prior gestor |
+| `gestoria-document-store.md` | The MinIO document archive and its upload UI |
+| `deposito-cuentas-registro-mercantil.md` | Filing annual accounts with the Registro Mercantil (D2/subsanación) |
+| `recargo-extemporaneidad.md` | Handling an AEAT late-filing surcharge notice |
+| `cloud-deployment.md` | Moving this stack to a server, HTTPS, multi-project hosting |
 
 ---
 
@@ -281,6 +325,26 @@ Abre `http://localhost/` y completa el asistente de primera ejecución de Factur
 Para una guía completa, abre Claude Code en este directorio y di:
 
 > "Ayúdame a configurar Verifactu Stack desde cero."
+
+---
+
+## Protegiendo la interfaz de subida (gestoria)
+
+`/gestoria/` no tiene login propio — se protege aparte, a nivel de proxy
+inverso, con [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy)
+usando inicio de sesión de Google restringido a una lista explícita de
+correos. FacturaScripts en `/` conserva su login habitual, sin cambios.
+
+```bash
+cp oauth2-proxy/authenticated-emails.txt.example oauth2-proxy/authenticated-emails.txt
+# Edita: un correo por línea — solo esas cuentas de Google podrán acceder a /gestoria/
+```
+
+Configura en `.env` las variables `GESTORIA_DOMAIN`, `OAUTH2_PROXY_CLIENT_ID`,
+`OAUTH2_PROXY_CLIENT_SECRET`, `OAUTH2_PROXY_REDIRECT_URL`,
+`OAUTH2_PROXY_COOKIE_SECURE` y `OAUTH2_PROXY_COOKIE_SECRET` — ver
+`.env.example` para el detalle de cada una y cómo crear el OAuth client ID
+en Google Cloud Console.
 
 ---
 
